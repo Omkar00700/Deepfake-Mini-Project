@@ -1,0 +1,120 @@
+
+name: DeepDefend CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+        pip install pytest pytest-cov pylint
+        
+    - name: Lint with pylint
+      run: |
+        # Use pylint to check code quality
+        pylint --disable=C0111,C0103,C0303,W1201,W1202 backend/*.py
+        
+    - name: Test with pytest and generate coverage report
+      run: |
+        cd backend
+        python -m pytest --cov=. --cov-report=xml
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v2
+      with:
+        file: ./backend/coverage.xml
+        fail_ci_if_error: false
+        
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+      
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/deepdefend:latest
+          ghcr.io/${{ github.repository_owner }}/deepdefend:${{ github.sha }}
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/deepdefend:buildcache
+        cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/deepdefend:buildcache,mode=max
+        
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v1
+      
+    - name: Configure kubectl
+      run: |
+        echo "${{ secrets.KUBECONFIG_DEV }}" > kubeconfig
+        chmod 600 kubeconfig
+        export KUBECONFIG=kubeconfig
+        
+    - name: Deploy to development
+      run: |
+        export KUBECONFIG=kubeconfig
+        # Update image tag in deployment
+        sed -i "s|image: deepdefend:latest|image: ghcr.io/${{ github.repository_owner }}/deepdefend:${{ github.sha }}|g" kubernetes/deployment.yaml
+        kubectl apply -f kubernetes/
+        kubectl rollout restart deployment/deepdefend-api
+        kubectl rollout restart deployment/deepdefend-worker
+        
+  deploy-prod:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v1
+      
+    - name: Configure kubectl
+      run: |
+        echo "${{ secrets.KUBECONFIG_PROD }}" > kubeconfig
+        chmod 600 kubeconfig
+        export KUBECONFIG=kubeconfig
+        
+    - name: Deploy to production
+      run: |
+        export KUBECONFIG=kubeconfig
+        # Update image tag in deployment
+        sed -i "s|image: deepdefend:latest|image: ghcr.io/${{ github.repository_owner }}/deepdefend:${{ github.sha }}|g" kubernetes/deployment.yaml
+        kubectl apply -f kubernetes/
+        kubectl rollout restart deployment/deepdefend-api
+        kubectl rollout restart deployment/deepdefend-worker

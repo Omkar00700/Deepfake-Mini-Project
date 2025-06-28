@@ -1,0 +1,129 @@
+
+groups:
+- name: deepdefend_alerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(deepdefend_errors_total[5m]) / rate(deepdefend_requests_total[5m]) > 0.05
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High error rate detected"
+      description: "Error rate is above 5% for the last 5 minutes."
+      
+  - alert: SlowDetection
+    expr: avg_over_time(deepdefend_detection_seconds_sum[5m]) / avg_over_time(deepdefend_detection_seconds_count[5m]) > 30
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Slow detection processing"
+      description: "Average detection time is above 30 seconds for the last 5 minutes."
+      
+  - alert: HighMemoryUsage
+    expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage"
+      description: "Memory usage is above 90% for the last 5 minutes."
+      
+  - alert: HighCpuUsage
+    expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage"
+      description: "CPU usage is above 90% for the last 5 minutes."
+      
+  - alert: LargeTaskQueue
+    expr: deepdefend_active_tasks > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Large task queue"
+      description: "Task queue has more than 100 tasks for the last 5 minutes."
+      
+  - alert: ApiDown
+    expr: up{job="deepdefend-api"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "API service is down"
+      description: "The DeepDefend API service is not responding."
+      
+  - alert: RedisDown
+    expr: up{job="redis"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Redis service is down"
+      description: "The Redis service is not responding."
+      
+  - alert: PostgresDown
+    expr: up{job="postgres"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "PostgreSQL service is down"
+      description: "The PostgreSQL service is not responding."
+      
+  - alert: SlowApiResponse
+    expr: rate(deepdefend_requests_total{status=~"5.."}[5m]) > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "API errors detected"
+      description: "The API is returning 5xx errors."
+      
+  - alert: LowDiskSpace
+    expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low disk space"
+      description: "Disk space is below 10% on the root filesystem."
+
+  - alert: LowModelAccuracy
+    expr: deepdefend_model_accuracy < 0.7
+    for: 30m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low model accuracy detected"
+      description: "The deepfake detection model accuracy has dropped below 70%."
+      
+  - alert: HighFalsePositives
+    expr: deepdefend_false_positives_rate > 0.2
+    for: 30m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High false positive rate"
+      description: "The false positive rate is above 20% over the last 30 minutes."
+      
+  - alert: HighFalseNegatives
+    expr: deepdefend_false_negatives_rate > 0.2
+    for: 30m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High false negative rate"
+      description: "The false negative rate is above 20% over the last 30 minutes."
+      
+  - alert: IndianFaceDetectionIssue
+    expr: deepdefend_indian_face_detection_failures_total / deepdefend_indian_face_detection_attempts_total > 0.3
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Indian face detection failures"
+      description: "More than 30% of Indian face detection attempts are failing."

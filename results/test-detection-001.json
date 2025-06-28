@@ -1,0 +1,30 @@
+{
+  "id": "test-detection-001",
+  "filename": "test_image.jpg",
+  "detectionType": "image",
+  "probability": 0.75,
+  "confidence": 0.85,
+  "processingTime": 0.8,
+  "regions": [
+    {
+      "box": [
+        50,
+        50,
+        150,
+        150
+      ],
+      "probability": 0.78,
+      "confidence": 0.86,
+      "metadata": {
+        "skin_tone": {
+          "success": true,
+          "indian_tone": {
+            "type": "medium",
+            "name": "Medium",
+            "score": 0.65
+          }
+        }
+      }
+    }
+  ]
+}

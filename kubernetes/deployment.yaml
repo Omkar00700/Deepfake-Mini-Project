@@ -1,0 +1,180 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepdefend-api
+  labels:
+    app: deepdefend
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: deepdefend
+      component: api
+  template:
+    metadata:
+      labels:
+        app: deepdefend
+        component: api
+    spec:
+      containers:
+      - name: api
+        image: deepdefend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DEBUG
+          value: "false"
+        - name: ENABLE_ASYNC_PROCESSING
+          value: "true"
+        - name: REDIS_URL
+          value: "redis://deepdefend-redis:6379/0"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: deepdefend-secrets
+              key: database-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: deepdefend-secrets
+              key: jwt-secret
+        - name: ENABLE_RATE_LIMITING
+          value: "true"
+        - name: RATE_LIMIT_REQUESTS
+          value: "100"
+        - name: REQUIRE_AUTH
+          value: "true"
+        - name: STRUCTURED_LOGGING
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        - name: models
+          mountPath: /app/models
+      volumes:
+      - name: uploads
+        emptyDir: {}
+      - name: models
+        persistentVolumeClaim:
+          claimName: deepdefend-models-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepdefend-worker
+  labels:
+    app: deepdefend
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deepdefend
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: deepdefend
+        component: worker
+    spec:
+      containers:
+      - name: worker
+        image: deepdefend:latest
+        command: ["celery", "-A", "task_queue.celery_app", "worker", "--loglevel=info"]
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DEBUG
+          value: "false"
+        - name: REDIS_URL
+          value: "redis://deepdefend-redis:6379/0"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: deepdefend-secrets
+              key: database-url
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        - name: models
+          mountPath: /app/models
+      volumes:
+      - name: uploads
+        emptyDir: {}
+      - name: models
+        persistentVolumeClaim:
+          claimName: deepdefend-models-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepdefend-redis
+  labels:
+    app: deepdefend
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepdefend
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: deepdefend
+        component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:6-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepdefend-models-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
